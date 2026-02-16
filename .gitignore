@@ -1,0 +1,84 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+venv/
+env/
+ENV/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Model files and checkpoints
+models/checkpoints/*
+models/final/*
+*.bin
+*.safetensors
+*.pt
+*.pth
+
+# Data (keep dataset folder structure but ignore large files)
+data/processed/*.jsonl
+data/processed/*.json
+
+# Logs and outputs
+outputs/logs/*
+outputs/results/*
+*.log
+wandb/
+runs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+
+# Cache
+.cache/
+*.cache
+
+# Training artifacts
+checkpoint-*/
+trainer_state.json
+training_args.bin
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Archives
+*.zip
+*.tar.gz
+*.tar
+*.rar
+
+# Keep important empty directories with .gitkeep
+!.gitkeep

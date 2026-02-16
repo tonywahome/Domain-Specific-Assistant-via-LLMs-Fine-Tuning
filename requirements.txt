@@ -1,0 +1,29 @@
+# Core LLM and Fine-tuning Libraries
+transformers>=4.40.0
+peft>=0.10.0
+datasets>=2.18.0
+accelerate>=0.27.0
+bitsandbytes>=0.43.0
+torch>=2.2.0
+trl>=0.8.0
+
+# Data Processing
+pandas>=2.2.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
+
+# Tokenization
+sentencepiece>=0.2.0
+protobuf>=4.25.0
+
+# Monitoring and Logging
+wandb>=0.16.0
+tensorboard>=2.16.0
+
+# Evaluation Metrics
+evaluate>=0.4.1
+rouge-score>=0.1.2
+
+# Utilities
+tqdm>=4.66.0
+pyyaml>=6.0.1
