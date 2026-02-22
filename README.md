@@ -4,36 +4,25 @@ A comprehensive project for fine-tuning **Google Gemma-2B** using **QLoRA** (4-b
 
 ---
 
-## ⚡ **Quick Start with Kaggle** (Recommended - FREE GPU!)
-
-**Get started in 5 minutes:**
-
-1. 📖 **Read**: [KAGGLE_QUICK_START.md](KAGGLE_QUICK_START.md) - Simple 5-step guide
-2. 📋 **Detailed Setup**: [KAGGLE_SETUP.md](KAGGLE_SETUP.md) - Comprehensive instructions with troubleshooting
-3. 🚀 **Run**: Upload `notebooks/financial_assistant_training.ipynb` to Kaggle with GPU enabled
-4. ⏱️ **Wait**: ~2 hours of training
-5. 💾 **Download**: Your fine-tuned model!
-
-**All you need**: Kaggle account + HuggingFace token (both free)
-
 ---
 
-## 🎯 Project Overview
+## Project Overview
 
-This project demonstrates state-of-the-art parameter-efficient fine-tuning techniques to adapt a general-purpose Large Language Model for specialized financial domain tasks. The fine-tuned model can extract and synthesize information from complex financial documents to answer domain-specific questions.
+This project demonstrates parameter-efficient fine-tuning techniques to adapt a general-purpose Large Language Model for specialized financial domain tasks. The fine-tuned model can extract and synthesize information from complex financial documents to answer domain-specific questions.
 
 ### Key Features
 
 - **Model**: Google Gemma-2B (2 billion parameters)
 - **Method**: QLoRA (Quantized Low-Rank Adaptation)
-- **Dataset**: Financial-QA-10k (5,000 curated Q&A pairs from SEC 10-K filings)
+- **Dataset**: Financial-QA-10k (7,000 high-quality Q&A pairs from SEC 10-K filings)
+- **Training Samples**: 3,000 examples (stratified sampling from full dataset)
 - **Format**: Alpaca instruction-response template
-- **Hardware**: Optimized for consumer GPUs (8-12GB VRAM) and free cloud platforms (Kaggle, Colab)
+- **Hardware**: Optimized for Kaggle T4 GPUs (8-12GB VRAM)
 - **Companies**: NVIDIA, Apple, Tesla, Procter & Gamble, Kroger, Las Vegas Sands
 
-## 📊 Dataset
+## Dataset
 
-The **Financial-QA-10k** dataset contains 7,001 high-quality question-answer pairs extracted from 2023 SEC 10-K filings of 6 major corporations across diverse sectors:
+The **Financial-QA-10k** dataset contains **7,000 high-quality question-answer pairs** extracted from 2023 SEC 10-K filings of 6 major corporations across diverse sectors:
 
 | Ticker | Company          | Sector               | Examples |
 | ------ | ---------------- | -------------------- | -------- |
@@ -43,6 +32,12 @@ The **Financial-QA-10k** dataset contains 7,001 high-quality question-answer pai
 | PG     | Procter & Gamble | Consumer Goods       | ~1,167   |
 | KR     | Kroger           | Retail/Grocery       | ~1,167   |
 | LVS    | Las Vegas Sands  | Gaming/Hospitality   | ~1,167   |
+
+**Training Configuration**: For fine-tuning, 3,000 examples were selected using stratified sampling (maintaining proportional representation across all companies) and split into:
+
+- **Training**: 2,700 examples (90%)
+- **Validation**: 150 examples (5%)
+- **Test**: 150 examples (5%)
 
 **Data Structure**:
 
@@ -54,14 +49,11 @@ The **Financial-QA-10k** dataset contains 7,001 high-quality question-answer pai
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
-### 🌟 Recommended: Kaggle (Free GPU!)
+### Recommended: Kaggle
 
 **Complete Kaggle guides available:**
-
-- 📖 **[KAGGLE_QUICK_START.md](KAGGLE_QUICK_START.md)** - Simple 5-step guide (start here!)
-- 📋 **[KAGGLE_SETUP.md](KAGGLE_SETUP.md)** - Detailed instructions with troubleshooting
 
 **Quick Summary**:
 
@@ -71,8 +63,8 @@ The **Financial-QA-10k** dataset contains 7,001 high-quality question-answer pai
 4. Click "Run All" and wait ~2 hours
 5. Download your trained financial assistant model!
 
-✅ **Perfect for**: Free GPU access, no local setup required  
-⏱️ **Time**: ~2 hours of automated training
+**Perfect for**: Free GPU access, no local setup required  
+ **Time**: ~2 hours of automated training
 
 ### Alternative Options
 
@@ -94,28 +86,43 @@ jupyter notebook notebooks/financial_assistant_training.ipynb
 
 ```
 Domain-Specific-Assistant-via-LLMs-Fine-Tuning/
-├── dataset/
-│   └── Financial-QA-10k.csv          # Raw dataset (7,001 examples)
+├── app.py                             # Streamlit web application (484 lines)
 ├── data/
+│   ├── Financial-QA-10k.csv           # Raw dataset (7,000 examples)
 │   └── processed/                     # Preprocessed JSONL files
-│       ├── train.jsonl                #   - Training set (4,500)
-│       ├── validation.jsonl           #   - Validation set (250)
-│       ├── test.jsonl                 #   - Test set (250)
+│       ├── train.jsonl                #   - Training set (2,700 examples)
+│       ├── validation.jsonl           #   - Validation set (150 examples)
+│       ├── test.jsonl                 #   - Test set (150 examples)
 │       └── metadata.json              #   - Dataset statistics
+├── notebooks/
+│   └── fine-tuned_financial_assistant.ipynb  # Complete training workflow (871 lines)
 ├── scripts/
 │   └── data_preprocessing.py          # Standalone preprocessing script
-├── notebooks/
-│   └── financial_assistant_training.ipynb  # Complete training workflow
 ├── models/
-│   ├── checkpoints/                   # Training checkpoints
+│   ├── checkpoints/                   # Training checkpoints (intermediate saves)
 │   └── final/                         # Final trained LoRA adapters
-│       └── gemma-2b-financial-qa-lora/
+│       ├── adapter_config.json        #   - LoRA configuration
+│       ├── adapter_model.safetensors  #   - LoRA weights
+│       ├── tokenizer.json             #   - Tokenizer files
+│       ├── tokenizer_config.json      #   - Tokenizer configuration
+│       └── README.md                  #   - Model card
 ├── outputs/
-│   ├── logs/                          # Training logs
+│   ├── logs/                          # Training logs and checkpoints
 │   └── results/                       # Evaluation results
-│       └── evaluation_results.json
-├── configs/                           # (Integrated into notebook)
+│       └── evaluation_results.json    #   - ROUGE scores and sample predictions
+├── app/
+│   └── Trading+in+the+21st+century.jpg  # App background image
+├── assets/
+│   └── trading_floor.jpg              # Additional assets
+├── .streamlit/
+│   └── config.toml                    # Streamlit theme configuration
+├── configs/                           # Configuration files (optional)
+├── run_app.bat                        # Windows app launcher
+├── run_app.sh                         # Unix/Mac app launcher
+├── Dockerfile                         # Docker containerization
 ├── requirements.txt                   # Python dependencies
+├── .env                               # Environment variables (not committed)
+├── .gitignore                         # Git ignore rules
 ├── README.md                          # This file
 └── LICENSE                            # MIT License
 ```
@@ -141,11 +148,11 @@ Domain-Specific-Assistant-via-LLMs-Fine-Tuning/
 
 **LoRA Parameters**:
 
-- Rank (r): 16
-- Alpha: 32
+- Rank (r): 8
+- Alpha: 16
 - Dropout: 0.05
-- Target modules: `q_proj`, `k_proj`, `v_proj`, `o_proj` (attention layers)
-- Trainable parameters: **~1.2%** of total model parameters
+- Target modules: `q_proj`, `v_proj` (attention query and value projection layers)
+- Trainable parameters: **~0.06%** of total model parameters (921,600 out of 1.5B)
 
 ### Training Configuration
 
@@ -205,11 +212,16 @@ Below is an instruction that describes a task, paired with an input that provide
 
 ### Evaluation Metrics
 
-Target performance on test set:
+**Achieved results on test set (100 examples):**
 
-- **ROUGE-L**: > 0.40 (measures answer overlap with ground truth)
-- **ROUGE-1**: > 0.45 (unigram overlap)
-- **ROUGE-2**: > 0.25 (bigram overlap)
+| Metric         | Target | Achieved   | Status                   |
+| -------------- | ------ | ---------- | ------------------------ |
+| **ROUGE-1**    | > 0.45 | **0.6141** | ✅ **+36% above target** |
+| **ROUGE-2**    | > 0.25 | **0.4463** | ✅ **+78% above target** |
+| **ROUGE-L**    | > 0.40 | **0.5631** | ✅ **+41% above target** |
+| **ROUGE-Lsum** | -      | **0.5640** | ✅ Excellent             |
+
+All metrics significantly exceed targets, demonstrating strong model performance on financial Q&A tasks.
 
 ### Sample Output
 
@@ -226,18 +238,6 @@ Target performance on test set:
 3. **Compliance Monitoring**: Track financial disclosures and regulatory requirements
 4. **Research Assistance**: Help analysts quickly find information in lengthy documents
 5. **Educational Tools**: Teach financial analysis through interactive question-answering
-
-## 🔄 Future Enhancements
-
-- [ ] Fine-tune on full 7,000+ dataset
-- [ ] Experiment with Gemma-7B for improved performance
-- [ ] Add Retrieval-Augmented Generation (RAG) for real-time 10-K analysis
-- [ ] Implement multi-year temporal analysis (compare 2022 vs 2023 filings)
-- [ ] Create REST API with FastAPI for production deployment
-- [ ] Build Gradio/Streamlit web interface
-- [ ] Expand to include 10-Q quarterly reports
-- [ ] Add numerical reasoning validation layer
-- [ ] Fine-tune on multiple financial document types (earnings calls, prospectuses)
 
 ## 📝 Model Usage
 
@@ -322,7 +322,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📧 Contact
 
-- **Author**: Tony Wahome
+- **Author**: Antony Wahome
 - **Repository**: [Domain-Specific-Assistant-via-LLMs-Fine-Tuning](https://github.com/tonywahome/Domain-Specific-Assistant-via-LLMs-Fine-Tuning)
 
 ---

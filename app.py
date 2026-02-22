@@ -86,21 +86,40 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Model configuration
+# Use local model if available, otherwise download from HuggingFace
+import os
+from pathlib import Path
+
+LOCAL_MODEL_PATH = Path("models/final")
 MODEL_ID = "Antonomics/gemma-2b-financial-qa-lora"
+USE_LOCAL_MODEL = LOCAL_MODEL_PATH.exists() and (LOCAL_MODEL_PATH / "adapter_model.safetensors").exists()
 
 @st.cache_resource
 def load_model():
-    """Load the fine-tuned model from HuggingFace"""
-    with st.spinner(" Loading AI model... This may take a minute..."):
+    """Load the fine-tuned model from local directory or HuggingFace"""
+    
+    if USE_LOCAL_MODEL:
+        model_source = f"local directory ({LOCAL_MODEL_PATH})"
+        adapter_path = str(LOCAL_MODEL_PATH)
+    else:
+        model_source = f"HuggingFace ({MODEL_ID})"
+        adapter_path = MODEL_ID
+    
+    with st.spinner(f" Loading AI model from {model_source}... This may take a minute..."):
         try:
-            # Use stored HuggingFace credentials (set via huggingface-hub login)
-            # Token will be automatically loaded from ~/.huggingface/token
-            
-            # Load tokenizer
-            tokenizer = AutoTokenizer.from_pretrained(
-                MODEL_ID,
-                trust_remote_code=True
-            )
+            # Load tokenizer - try local first, then HuggingFace
+            if USE_LOCAL_MODEL:
+                tokenizer = AutoTokenizer.from_pretrained(
+                    str(LOCAL_MODEL_PATH),
+                    trust_remote_code=True
+                )
+                st.success(f" Using local model from {LOCAL_MODEL_PATH}")
+            else:
+                tokenizer = AutoTokenizer.from_pretrained(
+                    MODEL_ID,
+                    trust_remote_code=True
+                )
+                st.info(f" Downloading model from HuggingFace (first time only, ~5GB)...")
             
             # Add padding token if not present
             if tokenizer.pad_token is None:
@@ -108,27 +127,53 @@ def load_model():
                 tokenizer.pad_token_id = tokenizer.eos_token_id
             
             # Configure quantization for efficient inference
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_use_double_quant=True,
-            )
+            # Check if CUDA is available
+            has_cuda = torch.cuda.is_available()
             
-            # Load base model
+            if has_cuda:
+                # Use 4-bit quantization with GPU
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                    llm_int8_enable_fp32_cpu_offload=True  # Enable CPU offload for memory issues
+                )
+                device_map = "auto"
+                torch_dtype = torch.float16
+            else:
+                # CPU-only mode - no quantization
+                bnb_config = None
+                device_map = {"": "cpu"}
+                torch_dtype = torch.float32
+                st.warning(" Running on CPU - inference will be slower. Consider using a GPU for better performance.")
+            
+            # Load base model (will be cached after first download)
             base_model_name = "google/gemma-2b"
-            model = AutoModelForCausalLM.from_pretrained(
-                base_model_name,
-                quantization_config=bnb_config,
-                device_map="auto",
-                torch_dtype=torch.float16,
-                trust_remote_code=True
-            )
             
-            # Load LoRA adapters from the fine-tuned model
+            if bnb_config:
+                model = AutoModelForCausalLM.from_pretrained(
+                    base_model_name,
+                    quantization_config=bnb_config,
+                    device_map=device_map,
+                    torch_dtype=torch_dtype,
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True
+                )
+            else:
+                # CPU mode without quantization
+                model = AutoModelForCausalLM.from_pretrained(
+                    base_model_name,
+                    device_map=device_map,
+                    torch_dtype=torch_dtype,
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True
+                )
+            
+            # Load LoRA adapters from local path or HuggingFace
             model = PeftModel.from_pretrained(
                 model, 
-                MODEL_ID
+                adapter_path
             )
             model.eval()
             
@@ -137,6 +182,7 @@ def load_model():
             error_msg = str(e)
             st.error(f"**Error loading model:** {error_msg}")
             
+            # Provide specific troubleshooting based on error type
             if "gated" in error_msg.lower() or "401" in error_msg or "403" in error_msg:
                 st.warning("""
                     **Troubleshooting Authentication:**
@@ -149,11 +195,35 @@ def load_model():
                     3. Check your token permissions at https://huggingface.co/settings/tokens
                     4. Clear cache and reload (Press 'C' in the app or restart Streamlit)
                 """)
+            elif "CUDA" in error_msg or "GPU" in error_msg or "device" in error_msg:
+                st.warning("""
+                    **Troubleshooting GPU/Memory Issues:**
+                    
+                    1. The model is now configured to run on CPU if GPU is unavailable
+                    2. If you have a GPU but seeing errors, try closing other GPU applications
+                    3. For CPU-only mode, restart Streamlit with: `streamlit run app.py`
+                    4. CPU inference will be slower but functional
+                """)
+            elif "dispatch" in error_msg.lower() or "offload" in error_msg.lower():
+                st.warning("""
+                    **Troubleshooting Model Loading:**
+                    
+                    1. Clear Streamlit cache: Press 'C' in the app or restart
+                    2. The app will automatically use CPU if GPU RAM is insufficient
+                    3. Restart the app: `streamlit run app.py`
+                """)
+            
+            st.info("""
+                **Alternative Solutions:**
+                - Try restarting the Streamlit app
+                - Clear browser cache and reload
+                - Check available system RAM (need at least 8GB free)
+            """)
             
             return None, None
 
-def generate_response(tokenizer, model, instruction, input_context="", max_new_tokens=256, temperature=0.7, top_p=0.9):
-    """Generate response from the model"""
+def generate_response(tokenizer, model, instruction, input_context="", max_new_tokens=256, temperature=0.7, top_p=0.9, fast_mode=False):
+    """Generate response from the model with optimized inference"""
     # Format prompt using Alpaca template
     prompt = f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
@@ -166,20 +236,43 @@ def generate_response(tokenizer, model, instruction, input_context="", max_new_t
 ### Response:
 """
     
-    # Tokenize
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512).to(model.device)
+    # Tokenize with optimized settings
+    inputs = tokenizer(
+        prompt, 
+        return_tensors="pt", 
+        truncation=True, 
+        max_length=384,  # Reduced from 512 for faster processing
+        padding=False
+    ).to(model.device)
     
-    # Generate
+    # Generate with optimized parameters
     with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            do_sample=True,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
+        if fast_mode:
+            # Fast mode: Use greedy decoding (more deterministic, 2-3x faster)
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,  # Greedy decoding
+                num_beams=1,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                early_stopping=True,
+                use_cache=True
+            )
+        else:
+            # Standard mode: Sampling with temperature
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                do_sample=True,
+                num_beams=1,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                early_stopping=True,
+                use_cache=True
+            )
     
     # Decode
     full_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -187,7 +280,34 @@ def generate_response(tokenizer, model, instruction, input_context="", max_new_t
     # Extract only the response part
     response = full_output.split("### Response:")[-1].strip()
     
+    # Remove duplicate "Explanation:" sections that often repeat the answer
+    # Look for "Explanation:" in various formats (case-insensitive)
+    import re
+    explanation_pattern = re.compile(r'\n\s*Explanation\s*:\s*', re.IGNORECASE)
+    match = explanation_pattern.search(response)
+    
+    if match:
+        # Get the part before "Explanation:"
+        before_explanation = response[:match.start()].strip()
+        # Only use the part before if it has substantial content (>30 chars)
+        if len(before_explanation) > 30:
+            response = before_explanation
+    
+    # Also remove any trailing "Note:" or similar meta-commentary
+    for trailing_marker in ['\n\nNote:', '\nNote:', '\n\nDisclaimer:', '\nDisclaimer:']:
+        if trailing_marker in response:
+            response = response.split(trailing_marker)[0].strip()
+    
     return response
+
+# Cache for storing responses to avoid regenerating identical queries
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def cached_generate_response(question, context, max_tokens, temp, top_p, fast_mode):
+    """Cached wrapper for generate_response"""
+    tokenizer, model = load_model()
+    if tokenizer and model:
+        return generate_response(tokenizer, model, question, context, max_tokens, temp, top_p, fast_mode)
+    return None
 
 # Initialize session state
 if 'history' not in st.session_state:
@@ -205,11 +325,13 @@ with st.sidebar:
                            help="Higher values make output more creative, lower values more focused")
     top_p = st.slider("Top-p (Nucleus Sampling)", 0.1, 1.0, 0.9, 0.05,
                      help="Controls diversity of output")
+    fast_mode = st.checkbox("⚡ Fast Mode", value=True,
+                           help="Enable for 2-3x faster responses using greedy decoding (more deterministic)")
     
     st.markdown("---")
     
     # Clear cache button
-    if st.button("🔄 Reload Model", help="Clear cache and reload the model"):
+    if st.button(" Reload Model", help="Clear cache and reload the model"):
         st.cache_resource.clear()
         st.rerun()
     
@@ -218,11 +340,11 @@ with st.sidebar:
     # Example questions
     st.markdown("###  Example Questions")
     examples = [
-        "What was the company's total revenue?",
-        "What were the main risk factors?",
-        "How did the company perform compared to last year?",
-        "What are the key business segments?",
-        "What is the company's debt situation?",
+        "How do you calculate a company's total revenue?",
+        "What is the difference between gross profit and net profit?",
+        "How do you calculate a company's EBITDA?",
+        "What is an IPO?",
+        "How is a company's debt calculated?",
     ]
     
     for example in examples:
@@ -304,29 +426,29 @@ if clear_inputs:
 
 # Handle question submission
 if submit and question:
-    # Load model
-    tokenizer, model = load_model()
+    # Show mode indicator
+    mode_badge = "⚡ FAST MODE" if fast_mode else "🎯 STANDARD MODE"
+    mode_color = "#00d4ff" if fast_mode else "#ff8c42"
     
-    if tokenizer and model:
-        with st.spinner(" Analyzing your question..."):
-            start_time = time.time()
-            
-            # Generate response
-            response = generate_response(
-                tokenizer, 
-                model, 
-                question, 
-                context,
-                max_new_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p
-            )
-            
-            end_time = time.time()
-            response_time = end_time - start_time
+    with st.spinner(" Analyzing your question..."):
+        start_time = time.time()
         
-        # Display response
-        st.markdown("###  AI Assistant Response")
+        # Generate response using cached wrapper
+        response = cached_generate_response(
+            question, 
+            context,
+            max_tokens,
+            temperature,
+            top_p,
+            fast_mode
+        )
+        
+        end_time = time.time()
+        response_time = end_time - start_time
+    
+    if response:
+        # Display response with mode indicator
+        st.markdown(f"###  AI Assistant Response <span style='color: {mode_color}; font-size: 14px; margin-left: 10px;'>{mode_badge}</span>", unsafe_allow_html=True)
         st.markdown(f"""
         <div class="response-box">
             <p style="margin: 0; font-size: 16px;">{response}</p>
